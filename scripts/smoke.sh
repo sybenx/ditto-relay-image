@@ -4,7 +4,7 @@
 set -euo pipefail
 image=$1 v=$2
 port=${PORT:-13131}
-work=$(mktemp -d)
+work=$(mktemp -d "${TMPDIR:-/tmp}/ditto-smoke.XXXXXX")
 name="ditto-smoke-$$"
 cleanup() {
   if [ "${ok:-}" != 1 ]; then echo "--- relay log"; docker logs "$name" 2>&1 | tail -50; fi
@@ -13,14 +13,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$work/config" "$work/data"
+mkdir -p "$work/config"
 cp "$(dirname "$0")/../test/ditto-relay.toml" "$work/config/"
 relay_sk=$(nak key generate)
 printf '%s' "$relay_sk" >"$work/config/secret.key"
-chmod 755 "$work/config" && chmod 644 "$work/config/"* && chmod 777 "$work/data"
+chmod 755 "$work" "$work/config" && chmod 644 "$work/config/"*
 
 docker run -d --name "$name" --user 1000:1000 -p "127.0.0.1:$port:13131" \
-  -v "$work/config:/etc/ditto-relay:ro" -v "$work/data:/data" "$image" >/dev/null
+  -v "$work/config:/etc/ditto-relay:ro" --tmpfs /data:uid=1000,gid=1000 "$image" >/dev/null
 
 info=""
 for _ in $(seq 60); do
