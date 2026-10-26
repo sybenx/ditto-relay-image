@@ -7,14 +7,14 @@ set -euo pipefail
 v=$1 dir=$2
 file="ditto-relay-$v-linux-x86_64"
 
-rel=$(nak req -k 30063 -a "$SOAPBOX" -t d="ditto-relay@$v" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
+rel=$(nakq req -k 30063 -a "$SOAPBOX" -t d="ditto-relay@$v" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
 [ -n "$rel" ] || { echo "no release event for $v" >&2; exit 1; }
 nak verify <<<"$rel" >/dev/null || { echo "release event signature is bad" >&2; exit 1; }
 [ "$(jq -r .pubkey <<<"$rel")" = "$SOAPBOX" ] || { echo "release event not by soapbox.pub" >&2; exit 1; }
 
 asset=""
 for id in $(jq -r '.tags[] | select(.[0]=="e") | .[1]' <<<"$rel"); do
-  ev=$(nak req -i "$id" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
+  ev=$(nakq req -i "$id" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
   [ -n "$ev" ] || continue
   [ "$(jq -r '[.kind, .pubkey, (.tags[]|select(.[0]=="filename")|.[1])] | @tsv' <<<"$ev")" = "3063	$SOAPBOX	$file" ] || continue
   nak verify <<<"$ev" >/dev/null || { echo "asset event signature is bad" >&2; exit 1; }
@@ -29,8 +29,8 @@ sha=$(tag x) size=$(tag size) url=$(tag url)
 [ "$(tag version)" = "$v" ] || { echo "asset event is for another version" >&2; exit 1; }
 
 mkdir -p "$dir"
-curl -fsSL --retry 3 -o "$dir/$file" "$url"
-echo "$sha  $dir/$file" | sha256sum -c >&2
+curl -fsSL --retry 3 --connect-timeout 20 --max-time 900 -o "$dir/$file" "$url"
+[ "$(sha256sum "$dir/$file" | cut -d" " -f1)" = "$sha" ] || { echo "SHA-256 differs from the asset event" >&2; exit 1; }
 [ "$(wc -c <"$dir/$file" | tr -d ' ')" = "$size" ] || { echo "size differs from the asset event" >&2; exit 1; }
 
 echo "binary=$file"
