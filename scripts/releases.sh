@@ -4,7 +4,7 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 
-nakq req -k 30063 -a "$SOAPBOX" -t i=ditto-relay $RELAYS 2>/dev/null |
+nakq req -k 30063 -a "$SOAPBOX" -t i=ditto-relay |
   while read -r ev; do
     [ "$(jq -r .pubkey <<<"$ev")" = "$SOAPBOX" ] || continue
     nak verify <<<"$ev" >/dev/null 2>&1 || { echo "bad signature: $(jq -r .id <<<"$ev")" >&2; continue; }

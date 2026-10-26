@@ -7,14 +7,14 @@ set -euo pipefail
 v=$1 dir=$2
 file="ditto-relay-$v-linux-x86_64"
 
-rel=$(nakq req -k 30063 -a "$SOAPBOX" -t d="ditto-relay@$v" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
+rel=$(nakq req -k 30063 -a "$SOAPBOX" -t d="ditto-relay@$v" | jq -cs '.[0] // empty')
 [ -n "$rel" ] || { echo "no release event for $v" >&2; exit 1; }
 nak verify <<<"$rel" >/dev/null || { echo "release event signature is bad" >&2; exit 1; }
 [ "$(jq -r .pubkey <<<"$rel")" = "$SOAPBOX" ] || { echo "release event not by soapbox.pub" >&2; exit 1; }
 
 asset=""
 for id in $(jq -r '.tags[] | select(.[0]=="e") | .[1]' <<<"$rel"); do
-  ev=$(nakq req -i "$id" $RELAYS 2>/dev/null | jq -cs '.[0] // empty')
+  ev=$(nakq req -i "$id" | jq -cs '.[0] // empty')
   [ -n "$ev" ] || continue
   [ "$(jq -r '[.kind, .pubkey, (.tags[]|select(.[0]=="filename")|.[1])] | @tsv' <<<"$ev")" = "3063	$SOAPBOX	$file" ] || continue
   nak verify <<<"$ev" >/dev/null || { echo "asset event signature is bad" >&2; exit 1; }
