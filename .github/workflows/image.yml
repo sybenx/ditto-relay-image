@@ -1,0 +1,114 @@
+# ghcr.io/sybenx/ditto-relay: Ditto Relay's signed release binary in the Dockerfile here.
+# Daily it looks for new releases (NIP-82 events signed by soapbox.pub), checks the
+# signatures and SHA-256, builds, starts the image with syb.lol's config and a throwaway
+# key, and only if NIP-11, a publish and a REQ work pushes <version>, <major.minor> and
+# <major>. A failure publishes nothing and opens an issue.
+name: image
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Build this version even if it's already on ghcr (e.g. 2.5.1); empty = new releases only
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+  issues: write
+
+env:
+  IMAGE: ghcr.io/sybenx/ditto-relay
+  NAK_URL: https://github.com/fiatjaf/nak/releases/download/v0.21.2/nak-v0.21.2-linux-amd64
+  NAK_SHA256: 0acd56fea6ab1b9a0a68c8615670c6f8eff9e8878922442e387b94ee15266bb8
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      builds: ${{ steps.plan.outputs.builds }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nak
+        run: |
+          curl -fsSL -o /tmp/nak "$NAK_URL"
+          echo "$NAK_SHA256  /tmp/nak" | sha256sum -c
+          sudo install -m 755 /tmp/nak /usr/local/bin/nak
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Find releases to build
+        id: plan
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          scripts/releases.sh > releases.tsv
+          echo "Signed releases:"; cat releases.tsv
+          [ -s releases.tsv ] || { echo "found no signed releases"; exit 1; }
+          builds=$(scripts/plan.sh releases.tsv "$WANT")
+          echo "To build: $builds"
+          echo "builds=$builds" >> "$GITHUB_OUTPUT"
+      - name: Open an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Release check failed"
+          gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' | grep -q . ||
+            gh issue create --title "$title" --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.builds != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nak
+        run: |
+          curl -fsSL -o /tmp/nak "$NAK_URL"
+          echo "$NAK_SHA256  /tmp/nak" | sha256sum -c
+          sudo install -m 755 /tmp/nak /usr/local/bin/nak
+      - name: Fetch and verify the binary
+        id: bin
+        run: scripts/fetch.sh "${{ matrix.version }}" bin | tee -a "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          docker build --pull \
+            --build-arg BINARY=${{ steps.bin.outputs.binary }} \
+            --build-arg SHA256=${{ steps.bin.outputs.sha256 }} \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --label "org.opencontainers.image.description=Ditto Relay ${{ matrix.version }} (soapbox.pub's signed release binary)" \
+            --label org.opencontainers.image.version=${{ matrix.version }} \
+            -t ditto-relay:test .
+      - name: Start test
+        run: scripts/smoke.sh ditto-relay:test "${{ matrix.version }}"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        run: |
+          for t in $(tr ',' ' ' <<<"${{ matrix.tags }}"); do
+            docker tag ditto-relay:test "$t"
+            docker push "$t"
+          done
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:${{ matrix.version }}")
+          echo "Pushed ${{ matrix.tags }} as $digest" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Open an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="ditto-relay ${{ matrix.version }}: build or start test failed, nothing published"
+          gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q . ||
+            gh issue create --title "$title" --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

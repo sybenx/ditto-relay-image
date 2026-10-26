@@ -1,0 +1,16 @@
+# syb.lol's ditto-relay.toml, for the start test. Its secret key is not here: the test makes
+# a throwaway one in the same place (secret.key beside this file).
+
+url = "wss://syb.lol/"
+bind = "0.0.0.0:13131"
+metrics_bind = "0.0.0.0:13133"
+real_ip_header = "cf-connecting-ip"
+
+data_dir = "/data"
+
+name = "syb.lol"
+description = "Aaro's relay"
+pubkey = "f5073ea24832d8e6246d22ec0b5a75bbf4a12558e3ac67cb07360b3474e5a40e"
+contact = "mailto:me@syb.lol"
+
+secret_key_file = "secret.key"
