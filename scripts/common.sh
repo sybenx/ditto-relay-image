@@ -2,11 +2,12 @@
 SOAPBOX=781a1527055f74c1f70230f10384609b34548f8ab6a0a6caa74025827f9fdae5 # soapbox.pub (_@soapbox.pub)
 RELAYS="wss://relay.ditto.pub wss://git.shakespeare.diy wss://relay.ngit.dev wss://relay.primal.net"
 # nakq req <filter flags>: asks each relay on its own, 30 s each, so one relay that never
-# sends EOSE (or refuses GitHub's runners) can't hang a run or hide the others' answers.
+# sends EOSE can't hang a run or hide the others' answers. stdin is /dev/null: nak reads
+# filters from a stdin that isn't a terminal, and an empty pipe (a GitHub step) means nothing.
 nakq() {
   local r
   for r in $RELAYS; do
-    within 30 nak "$@" "$r" || echo "no full answer from $r" >&2
+    within 30 nak "$@" "$r" </dev/null || echo "no full answer from $r" >&2
   done
 }
 
