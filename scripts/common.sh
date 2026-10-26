@@ -19,6 +19,6 @@ within() {
   (sleep "$t"; kill "$pid" 2>/dev/null) >/dev/null 2>&1 &
   watcher=$!
   wait "$pid" && rc=0 || rc=$?
-  kill "$watcher" 2>/dev/null || true
+  { kill "$watcher" && wait "$watcher"; } 2>/dev/null || true
   return "$rc"
 }
