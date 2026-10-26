@@ -15,9 +15,7 @@ trap cleanup EXIT
 
 mkdir -p "$work/config"
 cp "$(dirname "$0")/../test/ditto-relay.toml" "$work/config/"
-relay_# nak reads events or filters from stdin when it isn't a terminal, and does nothing on an
-# empty pipe (as in a GitHub step), so every nak below gets /dev/null.
-sk=$(nak key generate)
+relay_sk=$(nak key generate)
 printf '%s' "$relay_sk" >"$work/config/secret.key"
 chmod 755 "$work" "$work/config" && chmod 644 "$work/config/"*
 
